@@ -157,9 +157,9 @@ def read_challenge_transaction(
         )
 
     # verify that transaction contains a single Manage Data operation and its source account is not null
-    if len(transaction.operations) != 1:
+    if len(transaction.operations) < 1:
         raise InvalidSep10ChallengeError(
-            "Transaction requires a single ManageData operation."
+            "Transaction should contain at least one operation."
         )
 
     manage_data_op = transaction.operations[0]
@@ -169,12 +169,6 @@ def read_challenge_transaction(
     client_account = manage_data_op.source
     if not client_account:
         raise InvalidSep10ChallengeError("Operation should have a source account.")
-
-    if manage_data_op.data_name != f"{domain_name} auth":
-        raise InvalidSep10ChallengeError(
-            "The transaction's operation key name does not "
-            "include the expected home domain."
-        )
 
     if len(manage_data_op.data_value) != 64:
         raise InvalidSep10ChallengeError(
@@ -186,6 +180,13 @@ def read_challenge_transaction(
         raise InvalidSep10ChallengeError(
             "Operation value before encoding as base64 should be 48 bytes long."
         )
+
+    # verify any subsequent operations are manage data ops and source account is the server
+    for op in transaction.operations[1:]:
+        if not isinstance(op, ManageData):
+            raise InvalidSep10ChallengeError("Operation type should be ManageData.")
+        if op.source != server_account_id:
+            raise InvalidSep10ChallengeError("The transaction has operations that are unrecognized.")
 
     # verify that transaction envelope has a correct signature by server's signing key
     if not _verify_te_signed_by_account_id(transaction_envelope, server_account_id):
